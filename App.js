@@ -1,15 +1,21 @@
-import React,{useRef, useState} from 'react';
-import { StyleSheet, Text, View, Image, TextInput, Animated, TouchableOpacity, FlatList } from 'react-native';
+import React,{useRef, useState, useEffect} from 'react';
+import { StyleSheet, Text, View, Image, TextInput, Animated, TouchableOpacity, FlatList, Dimensions } from 'react-native';
+import { firebase_add_message, firebase_listen_message, InitializeFirebase, test_ter } from './Firebase';
 
 
+const {height} = Dimensions.get('window')
 export default function App() {
   const animate = useRef(new Animated.Value(0)).current;
   const fade = useRef(new Animated.Value(0)).current
   const [gc,setGC] = useState(false);
+  const [currentuser, setCurrentUser] = useState('Pedro Makiling');
+  const [userimage, setUserImage] = useState(0);
+  const [data, setData] = useState([]);
+  const [message, setMessage ] = useState('');
   
   const open_gc =()=> {
     Animated.timing(animate,{
-      toValue: -460,
+      toValue: -height*.62,
       duration: 2000,
       useNativeDriver: false,
     }).start(()=>{
@@ -17,13 +23,27 @@ export default function App() {
         toValue: 1,
         duration: 1000,
         useNativeDriver: false,
-      }).start(()=>setGC(true))
+      }).start(()=>{ setGC(true)})
     });
   }
 
+  useEffect(()=>{
+    InitializeFirebase();
+    firebase_listen_message('Messages', (result)=>{
+      setData(result)
+    });
+  },[]);
+
   return (
     <View style={styles.container}>
-      <TopView animate={animate} fade={fade}/>
+      <TopView animate={animate} fade={fade}
+        state={{
+          userimage, 
+          setUserImage,
+          currentuser,
+          setCurrentUser
+        }}
+      />
       { !gc ? <Animated.View opacity={fade.interpolate({inputRange:[0,1], outputRange:[1,0]})} position='absolute' bottom={20} alignSelf='center'>
         <TouchableOpacity onPress={open_gc}>  
           <Text style={{alignSelf:'center', color: '#0EA541', fontWeight: 'bold', fontSize: 17, marginTop: 20}}>Pumasok</Text>
@@ -32,26 +52,39 @@ export default function App() {
       
       <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', zIndex: -1}}>
         <FlatList
-          data={[{user: true},{user: true},{user: true},{user: false},{user: true},{user: true},{user: true},{user: false},{user: true},{user: true},{user: true},{user: false},{user: true},{user: true},{user: true},{user: false},{user: true},{user: true},{user: true},{user: false}]}
-          renderItem={({item})=><Item item={item}/>}
+          data={data}
+          renderItem={({item})=><Item item={item} currentuser={currentuser}/>}
           inverted
           keyExtractor={(item,index)=>index.toString()}
           
-          style={{position: 'absolute', bottom: 100, width: '100%',height:'100%',}}
+          style={{position: 'absolute', bottom: 70, width: '100%',height:'100%',}}
+          contentContainerStyle={{flexDirection: 'column-reverse'}}
         
         />
         <View style={{position: 'absolute', bottom: 25, flexDirection: 'row'}}>
 
         <TextInput
-              placeholder='Ilagay ang Pangalan'
+              placeholder='Maglagay ng mensahe'
+              value={message}
+              onChangeText={text=>setMessage(text)}
               style={{borderWidth: 1, width: '80%', height: 40, marginTop: 3,
               borderColor:'#BEBEBE',
               paddingLeft: 15  
               ,backgroundColor: 'white'
               ,borderRadius: 100}}
+              clearButtonMode='always'
         />
 
-       <TouchableOpacity>
+       <TouchableOpacity onPress={
+         ()=>{
+           firebase_add_message('Messages',{
+             name: currentuser,
+             image: userimage,
+             message
+           })
+           setMessage('');
+         }
+       }>
          <Image source={require('./assets/images/send.png')}
           style={{resizeMode: 'contain', height: 45, width: 45, marginLeft: 10
           }}
@@ -66,16 +99,27 @@ export default function App() {
 }
 
 function Item(props){
-  const{item} = props;
+  const{item, currentuser} = props;
+  let image = 0;
+  let user = currentuser == item.name ? true : false;
+
+  if(item.image == 0)
+    image = require('./assets/images/1.png')
+  if(item.image == 1)
+    image = require('./assets/images/2.png')
+  if(item.image == 2)
+    image = require('./assets/images/3.png')
   return(
-    <View style={{width: '100%', flexDirection:  !item.user ? 'row' : 'row-reverse', marginBottom: 30}}>
+    <View style={{width: '100%', flexDirection:  !user ? 'row' : 'row-reverse', marginBottom: 30}}>
       <Image
-        source={require('./assets/images/1.png')}
-        style={{resizeMode: 'contain', height: 70, width: 70, marginRight: 15}}
+        source={image}
+        marginRight={5}
+        marginLeft={5}
+        style={{resizeMode: 'contain', height: 50, width: 50}}
       />
-      <View style={{backgroundColor:'#D0DAFF', borderRadius: 20, padding: 10, maxWidth: '70%'}}>
-        <Text style={{color: '#8B8B8B', fontSize: 12}}>Berto Magdangal</Text>
-        <Text style={{color: '#797373', fontSize: 13}}>Maayos naman ang kalagayan namin ngunit, nakakabahala lang ang mga nangyayare sa mundo, hindi matapos matapos na pandemya at kawalan ng makakain ng maraming tao</Text>
+      <View style={{backgroundColor: user ? '#FDD6D6':'#D0DAFF' , borderRadius: 20, padding: 10, maxWidth: '70%'}}>
+        <Text style={{color: '#8B8B8B', fontSize: 12}}>{item.name}</Text>
+        <Text style={{color: '#797373', fontSize: 13}}>{item.message}</Text>
       </View>
     </View>
 
@@ -84,16 +128,16 @@ function Item(props){
 }
 
 function TopView(props){
-  const { animate, fade } = props;
-
+  const { animate, fade, state} = props;
+  const { currentuser, setCurrentUser, userimage, setUserImage } = state
   return (
     <Animated.View style={[styles.topView,{transform:[{translateY: animate}]}]}>
-      <Animated.View style={{flex: 1,alignItems: 'center', opacity: animate.interpolate({
+      <Animated.View style={{ flex: 1, alignItems: 'center', opacity: animate.interpolate({
         inputRange: [-300,0],
         outputRange: [0,1],
         extrapolate: 'clamp'
       })}}> 
-        <View style={{flex: 1, justifyContent: 'center', alignItems: 'center', paddingTop:100}}>       
+        <View style={{justifyContent: 'center', alignItems: 'center', paddingTop:20}}>       
           <Image
             source={require('./assets/images/logo.png')}
             style={{height: 90, width: 90}}
@@ -102,34 +146,48 @@ function TopView(props){
           <Text style={styles.title_text}>Mabuhay</Text>
           <Text style={[styles.title_text,{fontWeight: 'normal'}]}>Ayusin ang iyong tauhan</Text>
         </View>
-        <View style={{flexDirection: 'row', flex: 2, paddingTop: 20}}>
-          <View style={styles.circle}>
-            <Image
-              source={require('./assets/images/1.png')}
-              style={{height: '65%', width: '65%'}}
-              resizeMode='contain'
-            />
-          </View>
-          <View style={styles.circle}>
-            <Image
-              source={require('./assets/images/2.png')}
-              style={{height: '65%', width: '65%'}}
-              resizeMode='contain'
-            />
-          </View>
-          <View style={styles.circle}>
+        
+        <View style={{flexDirection: 'row', paddingTop: 20}}>
+          <TouchableOpacity  onPress={()=>setUserImage(0)}>
+            <View style={[styles.circle,{backgroundColor: userimage == 0 ? '#FFF96A' : 'white'}]}>
+              <Image
+                source={require('./assets/images/1.png')}
+                style={{height: '65%', width: '65%'}}
+                resizeMode='contain'
+              />
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity  onPress={()=>setUserImage(1)}>
+            <View style={[styles.circle,{backgroundColor: userimage == 1 ? '#FFF96A' : 'white'}]}>
+              <Image
+                source={require('./assets/images/2.png')}
+                style={{height: '65%', width: '65%'}}
+                resizeMode='contain'
+              />
+            </View>
+          </TouchableOpacity>
+          
+          <TouchableOpacity  onPress={()=>setUserImage(2)}>
+            
+            <View style={[styles.circle,{backgroundColor: userimage == 2 ? '#FFF96A' : 'white'}]}>
             <Image
               source={require('./assets/images/3.png')}
               style={{height: '65%', width: '65%'}}
               resizeMode='contain'
             />
           </View>
+        </TouchableOpacity>
         </View>
-        
+        <View style={{flex: 1, justifyContent:'center'}}>
+          
         <TextInput
               placeholder='Ilagay ang Pangalan'
+              onChangeText={text => setCurrentUser(text)}
+              value={currentuser}
               style={styles.input}
         />
+        </View>
       </Animated.View>
       
       <Animated.View style={{position:'absolute', bottom: 40, alignSelf: 'center', alignItems: 'center',
@@ -157,11 +215,9 @@ const styles = StyleSheet.create({
     backgroundColor: '#fff',
   },
   input:{
-    position: 'absolute',
-    bottom: 100,
     backgroundColor: 'white',
-    height: '6%',
-    width: '65%',
+    height: 35,
+    width: 250,
     textAlign:'center',
     borderColor:'#BCBCBC',
     borderWidth: 1.8,
